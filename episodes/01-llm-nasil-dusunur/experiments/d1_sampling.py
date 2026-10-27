@@ -1,5 +1,5 @@
 """D1: same prompt 3x, default sampling. temperature/top_p were removed in API 2026-10-21 (400 error), so no temperature=0 run.
-`--thinking` enables extended thinking (budget 1024) so the thinking block text can be shown; without it Sonnet 5.5 returned an empty thinking block (2026-10-27)."""
+`--thinking` enables adaptive thinking (effort high) so the thinking block text can be shown; without it Sonnet 5.5 returned an empty thinking block (2026-10-27)."""
 import os
 import sys
 
@@ -26,23 +26,28 @@ def table(rows):
         print(f"{i:<5}| {a:<40}")
 
 
-HEADER = "Düşünme bloğu (1. çağrı), ilk 12 satır:"
+HEADER = "Düşünme bloğu (bulunan ilk çağrı), ilk 12 satır:"
 
 
-def show_thinking(content):
+def show_thinking(contents):
     print("\n" + HEADER)
-    for b in content:
-        if b.type == "redacted_thinking":
-            return print("Düşünme bloğu gizli (redacted_thinking)")
-        if b.type == "thinking":
-            lines = b.thinking.splitlines()
-            print("\n".join("  " + l for l in lines[:12]))
-            return print(f"  … (toplam {len(b.thinking)} karakter)")
-    print("Düşünme bloğu yok: model bu çağrıda düşünme bloğu döndürmedi.")
+    for i, content in enumerate(contents, 1):
+        for b in content:
+            if b.type == "redacted_thinking":
+                return print(f"  çağrı {i}: düşünme bloğu gizli (redacted_thinking)")
+            if b.type == "thinking":
+                lines = b.thinking.splitlines()
+                print(f"  çağrı {i}:")
+                print("\n".join("  " + l for l in lines[:12]))
+                return print(f"  … (toplam {len(b.thinking)} karakter)")
+    print("Düşünme bloğu yok: hiçbir çağrıda düşünme bloğu dönmedi.")
 
 
 def call(client, model, thinking=False):
-    extra = {"thinking": {"type": "enabled", "budget_tokens": 1024}} if thinking else {}
+    # API 2026-10-27: "thinking.type.enabled" is not supported for this model;
+    # use thinking.type.adaptive + output_config.effort instead.
+    extra = ({"thinking": {"type": "adaptive"},
+              "extra_body": {"output_config": {"effort": "high"}}} if thinking else {})
     r = client.messages.create(model=model, max_tokens=2000 if thinking else 400,
                                messages=[{"role": "user", "content": PROMPT}], **extra)
     u = r.usage
@@ -70,15 +75,15 @@ def main():
         model = MODEL + "-latest"
         print(f"{MODEL} reddedildi, {model} deneniyor")
     print("Model:", model)
-    print("thinking: enabled (budget 1024)" if thinking else "thinking: default")
-    rows, usage, first = [], [], None
+    print("thinking: adaptive, effort high" if thinking else "thinking: default")
+    rows, usage, contents = [], [], []
     for _ in range(RUNS):
         d = call(client, model, thinking)
         rows.append(d[0])
         usage.append((d[1], d[2]))
-        first = first or d[3]
+        contents.append(d[3])
     table(rows)
-    show_thinking(first)
+    show_thinking(contents)
     print("\nusage (input/output tokens)")
     for i, u in enumerate(usage, 1):
         print(f"run {i}: default {u[0]}/{u[1]}")
