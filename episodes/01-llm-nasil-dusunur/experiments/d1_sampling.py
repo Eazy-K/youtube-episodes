@@ -1,5 +1,9 @@
 """D1: same prompt 3x, default sampling. temperature/top_p were removed in API 2026-10-21 (400 error), so no temperature=0 run.
-`--thinking` enables adaptive thinking (effort high) so the thinking block text can be shown; without it Sonnet 5.5 returned an empty thinking block (2026-10-27)."""
+Sonnet 5.5 always thinks (adaptive, effort high by default; "enabled"+budget_tokens and "disabled" give 400),
+but `display` defaults to "omitted": the thinking block comes back with empty text and only a signature, while
+the thinking tokens are still billed. `--thinking` sets display="summarized" (and effort high explicitly) so a
+summary of the thinking is returned. Raw chain of thought is never returned. Seen 2026-10-27; docs:
+https://platform.claude.com/docs/en/build-with-claude/thinking#controlling-thinking-display"""
 import os
 import sys
 
@@ -46,8 +50,9 @@ def show_thinking(contents):
 def call(client, model, thinking=False):
     # API 2026-10-27: "thinking.type.enabled" is not supported for this model;
     # use thinking.type.adaptive + output_config.effort instead.
-    extra = ({"thinking": {"type": "adaptive"},
-              "extra_body": {"output_config": {"effort": "high"}}} if thinking else {})
+    # display="summarized" is required to get the thinking text; the model default omits it.
+    extra = ({"thinking": {"type": "adaptive", "display": "summarized"},
+              "output_config": {"effort": "high"}} if thinking else {})
     r = client.messages.create(model=model, max_tokens=2000 if thinking else 400,
                                messages=[{"role": "user", "content": PROMPT}], **extra)
     u = r.usage
@@ -75,7 +80,7 @@ def main():
         model = MODEL + "-latest"
         print(f"{MODEL} reddedildi, {model} deneniyor")
     print("Model:", model)
-    print("thinking: adaptive, effort high" if thinking else "thinking: default")
+    print("thinking: adaptive, effort high, display summarized" if thinking else "thinking: default")
     rows, usage, contents = [], [], []
     for _ in range(RUNS):
         d = call(client, model, thinking)
