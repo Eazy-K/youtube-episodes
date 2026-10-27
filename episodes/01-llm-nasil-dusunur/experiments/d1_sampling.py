@@ -1,4 +1,5 @@
-"""D1: same prompt 3x, default sampling. temperature/top_p were removed in API 2026-10-21 (400 error), so no temperature=0 run."""
+"""D1: same prompt 3x, default sampling. temperature/top_p were removed in API 2026-10-21 (400 error), so no temperature=0 run.
+`--thinking` enables extended thinking (budget 1024) so the thinking block text can be shown; without it Sonnet 5.5 returned an empty thinking block (2026-10-27)."""
 import os
 import sys
 
@@ -40,9 +41,10 @@ def show_thinking(content):
     print("Düşünme bloğu yok: model bu çağrıda düşünme bloğu döndürmedi.")
 
 
-def call(client, model, **kw):
-    r = client.messages.create(model=model, max_tokens=400,
-                               messages=[{"role": "user", "content": PROMPT}], **kw)
+def call(client, model, thinking=False):
+    extra = {"thinking": {"type": "enabled", "budget_tokens": 1024}} if thinking else {}
+    r = client.messages.create(model=model, max_tokens=2000 if thinking else 400,
+                               messages=[{"role": "user", "content": PROMPT}], **extra)
     u = r.usage
     # Sonnet 5.5 may return a thinking block first; take the first text block.
     text = next((b.text for b in r.content if getattr(b, "type", "") == "text"), "<no text block>")
@@ -51,6 +53,7 @@ def call(client, model, **kw):
 
 def main():
     sys.stdout.reconfigure(encoding="utf-8")
+    thinking = "--thinking" in sys.argv
     print("PROMPT:\n" + PROMPT + "\n")
     if not os.environ.get("ANTHROPIC_API_KEY"):
         print("ANTHROPIC_API_KEY yok: API çağrıları atlandı")
@@ -62,14 +65,15 @@ def main():
     client = anthropic.Anthropic()
     model = MODEL
     try:
-        call(client, model)
+        call(client, model, thinking)
     except anthropic.NotFoundError:
         model = MODEL + "-latest"
         print(f"{MODEL} reddedildi, {model} deneniyor")
     print("Model:", model)
+    print("thinking: enabled (budget 1024)" if thinking else "thinking: default")
     rows, usage, first = [], [], None
     for _ in range(RUNS):
-        d = call(client, model)
+        d = call(client, model, thinking)
         rows.append(d[0])
         usage.append((d[1], d[2]))
         first = first or d[3]
