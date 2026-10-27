@@ -46,7 +46,7 @@ def call(client, model, **kw):
     u = r.usage
     # Sonnet 5.5 may return a thinking block first; take the first text block.
     text = next((b.text for b in r.content if getattr(b, "type", "") == "text"), "<no text block>")
-    return text.strip().replace("\n", " "), u.input_tokens, u.output_tokens
+    return text.strip().replace("\n", " "), u.input_tokens, u.output_tokens, r.content
 
 
 def main():
